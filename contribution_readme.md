@@ -1,50 +1,37 @@
 # Contribution 1: [jextract] Handle ambiguous Swift methods not possible in Java
 
-**Contribution Number:** 1
-
-**Student:** Tien Nguyen
-
-**Issue:** https://github.com/swiftlang/swift-java/issues/425
-
+**Contribution Number:** 1  
+**Student:** Tien Nguyen (GitHub: [@tiennguyen2310](https://github.com/tiennguyen2310))  
+**Issue:** https://github.com/swiftlang/swift-java/issues/425  
 **Status:** Phase I Complete
 
 ---
 
 ## Why I Chose This Issue
 
-I chose swiftlang/swift-java issue #425 because:
-- Swift is a new programming language for me to experience
-- it aligns with my existing Java experience
-- it would help me learn how a project handles source generation, naming collisions, and tests across Swift and Java
+I chose `swiftlang/swift-java` issue #425 because it connects my existing Java experience with my goal of learning Swift. The issue is about source generation and naming collisions, which is a focused way to learn how Swift APIs are translated into Java-facing bindings.
 
-This issue is a good fit for my contribution as 
-- it is labeled `help wanted` and `good first issue`
-- it has a clear example
-- the issue is straightforward: the solution is disambiguating generated Java method names when Swift APIs collide.
-
-I already commented on the issue to claim it, and received a reply that there is no strict naming convention yet. Thus, adding parameter names or type names to the generated Java name would both be reasonable options.
+This issue is also a good Phase I fit because it is labeled `good first issue` and `help wanted`, has a clear example, and was open/unassigned with no linked pull request when I selected it. I commented on the issue to introduce myself and ask about naming conventions; a maintainer replied that adding parameter names or type names would both be reasonable, with type names sounding like a likely direction.
 
 ---
 
 ## Understanding the Issue
 
-From my understanding, the current generated Java output (from the `jextract` tool) can create duplicate method signatures, when two Swift initializers differ by Swift argument labels, but map to the same Java parameter types. This matters, because the generated Java code won't compile, even though the original Swift API is valid.
-
 ### Problem Description
 
-The `jextract` tool can generate Java methods with the same name and erased parameter signature for different Swift initializers. In the example, both `init(throwing: Bool) throws` and `init?(doInit: Bool)` become Java methods named `init`, with parameters `(boolean, SwiftArena)`, which Java rejects as a duplicate method definition.
+The `jextract` tool can generate duplicate Java method signatures from distinct Swift initializers. In the issue example, `init(throwing: Bool) throws` and `init?(doInit: Bool)` are different Swift APIs, but they both become Java methods named `init` with parameters `(boolean, SwiftArena)`. Java does not include parameter names in method signatures, so the generated Java source becomes invalid and will not compile.
 
 ### Expected Behavior
 
-The generated Java code should use distinct method names, whenever valid Swift APIs would otherwise collide in Java. For the example, the fix should make the two Swift initializers compile by disambiguating their generated Java names. One potential solution is promoting parameter labels, or type names, into the generated method name when a conflict is detected.
+The generated Java code should use distinct method names whenever valid Swift declarations would otherwise collide in Java. A successful fix should keep existing generated names unchanged when there is no collision, but disambiguate conflicting names in a deterministic and readable way. The maintainer suggested using parameter names or type names in the generated name, and the fix should include a regression test for the duplicate `init(boolean, SwiftArena)` case.
 
 ### Current Behavior
 
-The generated Java output, for the example, contains duplicate `init(boolean, SwiftArena)` methods. Even though the parameter names differ in the source, Java method signatures don't include parameter names, so the generated source is invalid/would not compile.
+The generated Java output can contain duplicate `init(boolean, SwiftArena)` methods for different Swift initializers. Even though the original Swift API is valid, the generated Java class is not valid because Java treats those methods as duplicate definitions.
 
 ### Affected Components
 
-The affected part is likely in `Sources/JExtractSwiftLib`, specifically the logic that converts Swift declarations into generated Java method names for both FFM and JNI modes.
+The affected area is likely the `jextract` source-generation logic in `Sources/JExtractSwiftLib`, especially the code that converts Swift declarations into generated Java method names for FFM and JNI output. The repository README also notes that source-generation and runtime tests often live under `Tests/` and `Samples/`, so those are likely places to look for a reproduction and regression test.
 
 ---
 
@@ -72,7 +59,7 @@ The affected part is likely in `Sources/JExtractSwiftLib`, specifically the logi
 
 ### Analysis
 
-[Your analysis of the root cause - what's causing the issue?]
+[Your analysis of the root cause - what is causing the issue?]
 
 ### Proposed Solution
 
@@ -168,6 +155,7 @@ Using UMPIRE framework (adapted):
 
 ## Resources Used
 
-- [Link to helpful documentation]
-- [Tutorial or Stack Overflow post that helped]
-- [GitHub issues or discussions that helped]
+- Issue: https://github.com/swiftlang/swift-java/issues/425
+- Project repository and setup docs: https://github.com/swiftlang/swift-java#readme
+- My contribution README repository: https://github.com/tiennguyen2310/activity-log
+- My fork: https://github.com/tiennguyen2310/swift-java
