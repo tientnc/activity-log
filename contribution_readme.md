@@ -1,8 +1,11 @@
 # Contribution 1: [jextract] Handle ambiguous Swift methods not possible in Java
 
-**Contribution Number:** 1  
-**Student:** Tien Nguyen (GitHub: [@tiennguyen2310](https://github.com/tiennguyen2310))  
-**Issue:** https://github.com/swiftlang/swift-java/issues/425  
+**Contribution Number:** 1
+
+**Student:** Tien Nguyen (GitHub: [@tiennguyen2310](https://github.com/tiennguyen2310))
+
+**Issue:** https://github.com/swiftlang/swift-java/issues/425 (Fork: [link](https://github.com/tiennguyen2310/swift-java))
+
 **Status:** Phase I Complete
 
 ---
