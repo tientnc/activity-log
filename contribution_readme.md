@@ -6,7 +6,7 @@
 
 **Issue:** https://github.com/swiftlang/swift-java/issues/425 (Fork: [link](https://github.com/tiennguyen2310/swift-java))
 
-**Status:** Phase I Complete
+**Status:** Phase II Complete
 
 ---
 
@@ -14,7 +14,7 @@
 
 I chose `swiftlang/swift-java` issue #425 because it connects my existing Java experience with my goal of learning Swift. The issue is about source generation and naming collisions, which is a focused way to learn how Swift APIs are translated into Java-facing bindings.
 
-This issue is also a good Phase I fit because it is labeled `good first issue` and `help wanted`, has a clear example, and was open/unassigned with no linked pull request when I selected it. I commented on the issue to introduce myself and ask about naming conventions; a maintainer replied that adding parameter names or type names would both be reasonable, with type names sounding like a likely direction.
+This issue is also a good Phase I fit because it is labeled `good first issue` and `help wanted`, has a clear example, and was open/unassigned with no linked pull request when I selected it. I commented on the issue to introduce myself and ask about naming conventions; a maintainer replied that adding parameter names or type names would both be reasonable, with type names sounding like a likely direction. After I found that the original failure no longer reproduced on current `main`, the maintainer confirmed that adding focused regression coverage for #425 would still be useful.
 
 ---
 
@@ -30,11 +30,11 @@ The generated Java code should use distinct method names whenever valid Swift de
 
 ### Current Behavior
 
-The generated Java output can contain duplicate `init(boolean, SwiftArena)` methods for different Swift initializers. Even though the original Swift API is valid, the generated Java class is not valid because Java treats those methods as duplicate definitions.
+The original issue describes generated Java output containing duplicate `init(boolean, SwiftArena)` methods for different Swift initializers. During Phase II reproduction on the current `main` branch, I found that this exact duplicate no longer appears: JNI output now generates suffixed names (`initThrowing` and `initDoInit`). I also verified the same initializer-name disambiguation pattern in FFM. This means the remaining contribution is regression coverage, not a production-code fix.
 
 ### Affected Components
 
-The affected area is likely the `jextract` source-generation logic in `Sources/JExtractSwiftLib`, especially the code that converts Swift declarations into generated Java method names for FFM and JNI output. The repository README also notes that source-generation and runtime tests often live under `Tests/` and `Samples/`, so those are likely places to look for a reproduction and regression test.
+The affected area is the `jextract` source-generation logic in `Sources/JExtractSwiftLib`, especially `Sources/JExtractSwiftLib/JavaIdentifierFactory.swift` and the FFM/JNI generator paths that call `makeJavaMethodName`. The focused test lives in `Tests/JExtractSwiftTests/MethodImportTests.swift`, which already contains overload-disambiguation tests for global functions, methods, properties, and argument labels.
 
 ---
 
@@ -42,19 +42,23 @@ The affected area is likely the `jextract` source-generation logic in `Sources/J
 
 ### Environment Setup
 
-[Notes on setting up your local development environment - challenges you faced, how you solved them]
+I cloned my fork locally at `~/swift-java`, added the upstream remote, created `fix-issue-425`, and pushed the branch to my fork: https://github.com/tiennguyen2310/swift-java/tree/fix-issue-425. The project does not use a dev container, so I followed the README/CONTRIBUTING setup path. I installed Swift 6.3.2 through Swiftly and installed Amazon Corretto JDK 25 locally under `~/.jdks`; this was needed because the project expects a modern Swift toolchain and JDK 25+ for Java/FFM work. Swiftly reported missing system packages (`gnupg2`, `libncurses-dev`, `libz3-dev`, `pkg-config`), but I could not install them because this environment requires a sudo password; package resolution and the targeted Swift tests still completed successfully.
 
 ### Steps to Reproduce
 
-1. [Step 1]
-2. [Step 2]
-3. [Observed result]
+1. Create a Swift interface fixture with `public class OverloadedInitializerClass`.
+2. Add two Swift initializers that would collide if Java names were not disambiguated: `public init(throwing: Swift.Bool) throws` and `public init(doInit: Swift.Bool)`.
+3. Generate Java bindings through the existing `assertOutput` helper for both `.jni` and `.ffm`.
+4. Check for the expected fixed behavior: generated Java should contain `initThrowing(...)` and `initDoInit(...)`.
+5. Check for the original bad behavior: generated Java should not contain duplicate raw `init(boolean ..., SwiftArena/AllocatingSwiftArena ...)` signatures.
+6. Observed result: the duplicate signature did not reproduce on current `main`; both JNI and FFM generated suffixed names, so I added regression coverage to lock in that behavior.
 
 ### Reproduction Evidence
 
-- **Commit showing reproduction:** [Link to commit in your fork]
-- **Screenshots/logs:** [If applicable]
-- **My findings:** [What you discovered during reproduction]
+- **Commit showing reproduction:** The original failure did not reproduce on current `main`, so the PR records the verified fixed behavior instead of a failing commit. Regression commits in my fork: [`ac86686`](https://github.com/tiennguyen2310/swift-java/commit/ac86686), [`7a9f09c`](https://github.com/tiennguyen2310/swift-java/commit/7a9f09c), and [`1373899`](https://github.com/tiennguyen2310/swift-java/commit/1373899).
+- **Branch link:** https://github.com/tiennguyen2310/swift-java/tree/fix-issue-425
+- **Screenshots/logs:** Targeted command: `swift test --filter MethodImportTests`; format command: `swift-format lint --configuration .swift-format Tests/JExtractSwiftTests/MethodImportTests.swift`.
+- **My findings:** `MethodImportTests` passed after adding a focused parameterized regression test. Local commit history shows related fixes were already merged in `jextract/jni/ffm: Prevent Swift overloads by parameter names causing duplicate names in Java, add suffix to names (#629)` and `Fix overloaded identifier for underscored label (#735)`.
 
 ---
 
@@ -62,30 +66,33 @@ The affected area is likely the `jextract` source-generation logic in `Sources/J
 
 ### Analysis
 
-[Your analysis of the root cause - what is causing the issue?]
+The original root cause was that Java method-name generation could ignore Swift distinctions that Java does not represent in the overload signature, such as argument labels. Current `main` now has `JavaIdentifierFactory`, which groups imported functions by Java base name, detects same-typed overload groups, and applies a camel-case suffix from Swift parameter labels. Because of that existing logic, the exact JNI duplicate from #425 no longer appears in local reproduction.
 
 ### Proposed Solution
 
-[High-level description of your fix approach]
+The maintainer confirmed that regression coverage for #425 is useful because the underlying behavior is already fixed on current `main`. My solution is therefore test-only: add a focused initializer-collision regression test that proves JNI and FFM both generate disambiguated Java method names and do not emit duplicate raw `init(...)` signatures.
 
 ### Implementation Plan
 
 Using UMPIRE framework (adapted):
 
-**Understand:** [Restate the problem]
+**Understand:** The issue is about valid Swift overloads becoming invalid Java because Java ignores parameter names and cannot represent two methods with the same name and parameter types.
 
-**Match:** [What similar patterns/solutions exist in the codebase?]
+**Match:** `Sources/JExtractSwiftLib/JavaIdentifierFactory.swift` already solves similar collisions by adding suffixes such as `takeValueA`, `takeValueB`, `barA`, and `barB`. Existing tests in `Tests/JExtractSwiftTests/MethodImportTests.swift` cover global functions, methods, property/method conflicts, and argument-label suffixes.
 
-**Plan:** [Step-by-step implementation plan]
-1. [Modify file X to do Y]
-2. [Add function Z]
-3. [Update tests]
+**Plan:**
+1. Add an initializer-collision fixture to `Tests/JExtractSwiftTests/MethodImportTests.swift` using `OverloadedInitializerClass`.
+2. Add one parameterized Swift Testing test over `[JExtractGenerationMode.jni, .ffm]`, following the repo's existing test style.
+3. For JNI, assert generated Java includes `initThrowing(boolean throwing, SwiftArena swiftArena) throws Exception` and `initDoInit(boolean doInit, SwiftArena swiftArena)`.
+4. For FFM, assert generated Java includes `initThrowing(boolean throwing, AllocatingSwiftArena swiftArena)` and `initDoInit(boolean doInit, AllocatingSwiftArena swiftArena)`.
+5. For both modes, assert the raw duplicate `init(...)` signatures are absent.
+6. Run `swift test --filter MethodImportTests` and `swift-format lint --configuration .swift-format Tests/JExtractSwiftTests/MethodImportTests.swift`.
 
-**Implement:** [Link to your branch/commits as you work]
+**Implement:** Working branch: https://github.com/tiennguyen2310/swift-java/tree/fix-issue-425. Pull request: https://github.com/swiftlang/swift-java/pull/1701.
 
-**Review:** [Self-review checklist - does it follow the project's contribution guidelines?]
+**Review:** I kept the PR test-only, followed the existing `MethodImportTests` style, and addressed maintainer review by consolidating two separate tests into one parameterized test with one shared input string. I also fixed the `swift-format` CI failure in a follow-up commit.
 
-**Evaluate:** [How will you verify it works?]
+**Evaluate:** The main validation is `swift test --filter MethodImportTests`. The formatting validation is `swift-format lint --configuration .swift-format Tests/JExtractSwiftTests/MethodImportTests.swift`.
 
 ---
 
@@ -93,50 +100,51 @@ Using UMPIRE framework (adapted):
 
 ### Unit Tests
 
-- [ ] Test case 1: [Description]
-- [ ] Test case 2: [Description]
-- [ ] Test case 3: [Description]
+- [x] Test case 1: JNI initializer collision generates suffixed Java method names: `initThrowing` and `initDoInit`.
+- [x] Test case 2: FFM initializer collision generates suffixed Java method names: `initThrowing` and `initDoInit`.
+- [x] Test case 3: Both modes assert that duplicate raw `init(...)` Java signatures are absent.
 
 ### Integration Tests
 
-- [ ] Integration scenario 1
-- [ ] Integration scenario 2
+- [ ] Optional follow-up: run a sample jextract app if the final PR changes generator behavior rather than only adding regression tests.
+- [ ] Optional follow-up: run broader Java/Gradle tests if maintainers request validation beyond `MethodImportTests`.
 
 ### Manual Testing
 
-[What you tested manually and results]
+I ran `swift test --filter MethodImportTests`; the suite passed, including the new parameterized initializer regression test for both `.jni` and `.ffm`. The broader run produced existing warnings around unsupported `Any` imports, but those warnings are from pre-existing tests and are unrelated to the initializer coverage. I also ran `swift-format lint --configuration .swift-format Tests/JExtractSwiftTests/MethodImportTests.swift`, which passed after the format-only follow-up commit.
 
 ---
 
 ## Implementation Notes
 
-### Week [X] Progress
+### Week 1 Progress
 
-[What you built this week, challenges faced, decisions made]
+I completed local setup, created the working branch, and investigated the exact issue fixture. The main challenge was toolchain setup on Linux: Swift was not initially available, and Java 21 was too old for the project expectations, so I installed Swift 6.3.2 and JDK 25 locally. The reproduction step showed that the original duplicate `init(boolean, SwiftArena)` output is no longer produced on current `main`.
 
-### Week [Y] Progress
+### Week 2 Progress
 
-[Continue documenting as you work]
+I opened PR #1701 with regression coverage for #425. The maintainer approved the direction and asked for the duplicate FFM/JNI test inputs to be consolidated. I updated the PR to use one shared input fixture and one parameterized test over `.jni` and `.ffm`, then pushed a small format-only commit after CI's `swift-format` check flagged the attribute layout.
 
 ### Code Changes
 
-- **Files modified:** [List]
-- **Key commits:** [Links to important commits]
-- **Approach decisions:** [Why you chose certain approaches]
+- **Files modified:** `Tests/JExtractSwiftTests/MethodImportTests.swift` in the #425 PR.
+- **Key commits:** [`ac86686`](https://github.com/tiennguyen2310/swift-java/commit/ac86686) added the initial regression coverage, [`7a9f09c`](https://github.com/tiennguyen2310/swift-java/commit/7a9f09c) parameterized the test after maintainer feedback, and [`1373899`](https://github.com/tiennguyen2310/swift-java/commit/1373899) fixed formatting.
+- **Approach decisions:** Because the original bug no longer reproduces on current `main`, I kept this contribution as regression coverage instead of changing production generator code.
 
 ---
 
 ## Pull Request
 
-**PR Link:** [GitHub PR URL when submitted]
+**PR Link:** https://github.com/swiftlang/swift-java/pull/1701
 
-**PR Description:** [Draft or final PR description - much of the content above can be adapted]
+**PR Description:** Adds regression coverage for #425. The PR verifies that overloaded Swift initializers that would otherwise collide as Java `init(...)` methods are emitted as distinct Java names such as `initThrowing(...)` and `initDoInit(...)`, and that the duplicate raw `init(...)` signatures are absent.
 
 **Maintainer Feedback:**
-- [Date]: [Summary of feedback received]
-- [Date]: [How you addressed it]
+- 2026-06-09: Maintainer confirmed that regression coverage for #425 would be useful because the original behavior appears fixed by earlier overload-disambiguation work.
+- 2026-06-09: Maintainer requested one shared input string and one parameterized test over JNI/FFM instead of two separate tests; I updated the PR in commit `7a9f09c`.
+- 2026-06-10: CI format check required the `@Test` attribute to be split across lines; I fixed this in commit `1373899`.
 
-**Status:** [Awaiting review / Iterating / Approved / Merged]
+**Status:** Approved by maintainer; format fix pushed; waiting for final CI/merge.
 
 ---
 
@@ -144,21 +152,25 @@ Using UMPIRE framework (adapted):
 
 ### Technical Skills Gained
 
-[What you learned technically]
+I learned how `swift-java`'s `jextract` tests validate generated Java output, how `JavaIdentifierFactory` disambiguates Swift declarations for Java, and how Swift Testing parameterized tests are written with `@Test(arguments:)`.
 
 ### Challenges Overcome
 
-[What was hard and how you solved it]
+The issue had already been fixed on current `main`, so I had to pivot from a code-fix mindset to a regression-coverage contribution. I also had to handle Linux toolchain setup by installing Swift 6.3.2 through Swiftly and using a local JDK 25 installation.
 
 ### What I'd Do Differently Next Time
 
-[Reflection on your process]
+I would check current `main`, related merged PRs, and CI formatting rules earlier before deciding whether an issue needs a production fix or a smaller regression-test PR.
 
 ---
 
 ## Resources Used
 
 - Issue: https://github.com/swiftlang/swift-java/issues/425
+- Pull request: https://github.com/swiftlang/swift-java/pull/1701
 - Project repository and setup docs: https://github.com/swiftlang/swift-java#readme
+- Contribution guide: https://github.com/swiftlang/swift-java/blob/main/CONTRIBUTING.md
+- Related merged fix PR: https://github.com/swiftlang/swift-java/pull/629
+- Related merged follow-up PR: https://github.com/swiftlang/swift-java/pull/735
 - My contribution README repository: https://github.com/tiennguyen2310/activity-log
 - My fork: https://github.com/tiennguyen2310/swift-java
